@@ -13,9 +13,16 @@
     label { font-weight: 600; font-size: 14px; color: #333; display: block; margin-bottom: 6px; }
     input { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 15px; outline: none; }
     input:focus { border-color: #1a73e8; }
-    button { width: 100%; background-color: #1a73e8; color: white; padding: 14px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-    button:disabled { background-color: #a0c3ff; }
-    .history-title { margin-top: 30px; border-bottom: 2px solid #1a73e8; padding-bottom: 6px; font-size: 16px; color: #1a73e8; font-weight: bold; }
+    
+    .btn-submit { width: 100%; background-color: #1a73e8; color: white; padding: 14px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    .btn-submit:disabled { background-color: #a0c3ff; }
+    
+    .history-header { margin-top: 30px; border-bottom: 2px solid #1a73e8; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .history-title { font-size: 15px; color: #1a73e8; font-weight: bold; }
+    
+    .btn-excel { background-color: #34a853; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; }
+    .btn-excel:hover { background-color: #2d8e47; }
+    
     .item { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 12px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center; }
     .item-name { font-weight: bold; color: #202124; font-size: 15px; }
     .item-time { font-size: 12px; color: #70757a; margin-top: 3px; }
@@ -27,6 +34,7 @@
   <div class="container">
     <h2>XÁC NHẬN NỘP TIỀN</h2>
     
+    <!-- Form nhập dữ liệu -->
     <div class="form-group">
       <label>Họ và Tên (*)</label>
       <input type="text" id="hoTen" placeholder="Nhập họ và tên của bạn">
@@ -42,17 +50,58 @@
       <input type="text" id="ghiChu" placeholder="Nội dung chuyển khoản / Lớp...">
     </div>
     
-    <button id="btnSubmit" onclick="guiThongTin()">Xác nhận Nộp tiền</button>
+    <button id="btnSubmit" class="btn-submit" onclick="guiThongTin()">Xác nhận Nộp tiền</button>
 
-    <div class="history-title">Danh sách đã nộp (Realtime)</div>
+    <!-- Tiêu đề danh sách & Nút tải Excel -->
+    <div class="history-header">
+      <span class="history-title">Danh sách đã nộp tiền</span>
+      <button class="btn-excel" onclick="taiFileExcel()">Tải file Excel</button>
+    </div>
+    
+    <!-- Nơi liệt kê danh sách người nộp tiền -->
     <div id="danhSach">Đang tải danh sách...</div>
   </div>
 
   <script>
-    // Đường dẫn Firebase Realtime Database của bạn
+    // Đường dẫn dữ liệu Firebase của bạn
     const FIREBASE_URL = "https://xdkiot-default-rtdb.firebaseio.com/nop_tien";
 
-    // 1. Hàm gửi thông tin lên Firebase bằng REST API (POST)
+    // 1. Hàm tải và liệt kê danh sách người nộp tiền phía dưới
+    async function taiDanhSach() {
+      try {
+        const response = await fetch(`${FIREBASE_URL}.json`);
+        const data = await response.json();
+        const danhSachContainer = document.getElementById('danhSach');
+
+        if (!data) {
+          danhSachContainer.innerHTML = '<div class="empty-msg">Chưa có ai nộp tiền.</div>';
+          return;
+        }
+
+        // Chuyển dữ liệu thành mảng và đưa người nộp tiền mới nhất lên đầu
+        const items = Object.values(data).reverse();
+
+        let html = '';
+        items.forEach(item => {
+          const soTienDinhDang = Number(item.soTien).toLocaleString('vi-VN') + ' đ';
+          html += `
+            <div class="item">
+              <div>
+                <div class="item-name">${escapeHtml(item.hoTen)}</div>
+                <div class="item-time">${escapeHtml(item.thoiGian)}${item.ghiChu ? ' - ' + escapeHtml(item.ghiChu) : ''}</div>
+              </div>
+              <div class="item-amount">${soTienDinhDang}</div>
+            </div>
+          `;
+        });
+
+        danhSachContainer.innerHTML = html;
+      } catch (error) {
+        console.error("Lỗi khi tải danh sách:", error);
+      }
+    }
+
+    // 2. Hàm gửi thông tin người nộp tiền lên Firebase
     async function guiThongTin() {
       const hoTen = document.getElementById('hoTen').value.trim();
       const soTien = document.getElementById('soTien').value.trim();
@@ -81,13 +130,16 @@
           body: JSON.stringify(data)
         });
 
-        // Reset ô nhập
+        // Xóa thông tin cũ trên form
         document.getElementById('hoTen').value = '';
         document.getElementById('soTien').value = '';
         document.getElementById('ghiChu').value = '';
-        alert("Gửi thông tin nộp tiền thành công!");
+        alert("Gửi thông tin thành công!");
+        
+        // Tải lại danh sách ngay lập tức sau khi bấm nộp tiền thành công
+        taiDanhSach();
       } catch (error) {
-        alert("Có lỗi xảy ra, vui lòng thử lại!");
+        alert("Có lỗi xảy ra, vui lòng kiểm tra kết nối mạng!");
         console.error(error);
       } finally {
         btn.disabled = false;
@@ -95,45 +147,42 @@
       }
     }
 
-    // 2. Hàm lắng nghe thay đổi dữ liệu từ Firebase bằng EventSource (Realtime)
-    function batDauLangNgheRealtime() {
-      const eventSource = new EventSource(`${FIREBASE_URL}.json`);
-
-      eventSource.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        const danhSachContainer = document.getElementById('danhSach');
-
+    // 3. Hàm tải file Excel (.csv)
+    async function taiFileExcel() {
+      try {
+        const response = await fetch(`${FIREBASE_URL}.json`);
+        const data = await response.json();
+        
         if (!data) {
-          danhSachContainer.innerHTML = '<div class="empty-msg">Chưa có ai nộp tiền.</div>';
+          alert("Chưa có dữ liệu để tải về!");
           return;
         }
 
-        // Chuyển object dữ liệu thành mảng và đảo ngược (người mới nhất lên đầu)
-        const items = Object.values(data).reverse();
+        let csvContent = "\uFEFF"; 
+        csvContent += "Họ và Tên,Số Tiền (VNĐ),Thời Gian,Ghi Chú\n";
 
-        let html = '';
-        items.forEach(item => {
-          const soTienDinhDang = Number(item.soTien).toLocaleString('vi-VN') + ' đ';
-          html += `
-            <div class="item">
-              <div>
-                <div class="item-name">${escapeHtml(item.hoTen)}</div>
-                <div class="item-time">${escapeHtml(item.thoiGian)}${item.ghiChu ? ' - ' + escapeHtml(item.ghiChu) : ''}</div>
-              </div>
-              <div class="item-amount">${soTienDinhDang}</div>
-            </div>
-          `;
+        Object.values(data).forEach(item => {
+          const hoTen = `"${(item.hoTen || '').replace(/"/g, '""')}"`;
+          const soTien = item.soTien || 0;
+          const thoiGian = `"${(item.thoiGian || '').replace(/"/g, '""')}"`;
+          const ghiChu = `"${(item.ghiChu || '').replace(/"/g, '""')}"`;
+          csvContent += `${hoTen},${soTien},${thoiGian},${ghiChu}\n`;
         });
 
-        danhSachContainer.innerHTML = html;
-      };
-
-      eventSource.onerror = function() {
-        console.error("Lỗi kết nối Realtime, đang thử kết nối lại...");
-      };
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `danh_sach_nop_tien.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        alert("Có lỗi khi tải file!");
+        console.error(err);
+      }
     }
 
-    // Lọc ký tự đặc biệt để bảo mật
     function escapeHtml(text) {
       if (!text) return '';
       return String(text)
@@ -144,8 +193,12 @@
         .replace(/'/g, "&#039;");
     }
 
-    // Tự động chạy lắng nghe Realtime khi tải xong trang
-    window.onload = batDauLangNgheRealtime;
+    // Tự động tải danh sách khi vừa mở file
+    window.onload = function() {
+      taiDanhSach();
+      // Cứ 3 giây tự động tải lại danh sách 1 lần để cập nhật người mới
+      setInterval(taiDanhSach, 3000);
+    };
   </script>
 </body>
 </html>
